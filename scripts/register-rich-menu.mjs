@@ -25,6 +25,25 @@ const client = new Client({
 // 上部 1/10 (約168px) をタブ切り替えエリアに設定
 const TAB_HEIGHT = 168; 
 
+const HOME_ALIAS_ID = 'home-menu';
+const RESERVE_ALIAS_ID = 'reserve-menu';
+
+function resolveImagePath(filenameBase) {
+  const jpg = path.join(projectRoot, 'public', `${filenameBase}.jpg`);
+  const JPG = path.join(projectRoot, 'public', `${filenameBase}.JPG`);
+  if (fs.existsSync(jpg)) return jpg;
+  if (fs.existsSync(JPG)) return JPG;
+  throw new Error(`${filenameBase}.jpg (または .JPG) が見つかりません。`);
+}
+
+async function upsertRichMenuAlias(richMenuAliasId, richMenuId) {
+  try {
+    await client.updateRichMenuAlias(richMenuAliasId, richMenuId);
+  } catch {
+    await client.createRichMenuAlias(richMenuId, richMenuAliasId);
+  }
+}
+
 const createMenuObject = (name) => ({
   size: { width: 2500, height: 1686 },
   selected: true,
@@ -34,18 +53,26 @@ const createMenuObject = (name) => ({
     {
       // 左上タブ：ホーム切り替え
       bounds: { x: 0, y: 0, width: 1250, height: TAB_HEIGHT },
-      action: { type: "postback", data: "action=switch-home", displayText: "ホームへ" }
+      action: {
+        type: "richmenuswitch",
+        richMenuAliasId: HOME_ALIAS_ID,
+        data: "action=switch-home",
+      }
     },
     {
       // 右上タブ：予約切り替え
       bounds: { x: 1250, y: 0, width: 1250, height: TAB_HEIGHT },
-      action: { type: "postback", data: "action=switch-reserve", displayText: "予約へ" }
+      action: {
+        type: "richmenuswitch",
+        richMenuAliasId: RESERVE_ALIAS_ID,
+        data: "action=switch-reserve",
+      }
     },
     {
       // メインコンテンツエリア（タブより下の全領域）
       // ここをさらに細かく分けることも可能です
       bounds: { x: 0, y: TAB_HEIGHT, width: 2500, height: 1686 - TAB_HEIGHT },
-      action: { type: "postback", data: "action=main-content", displayText: "メインコンテンツ" }
+      action: { type: "postback", data: "action=main-content" }
     }
   ]
 });
@@ -57,7 +84,7 @@ async function register() {
     // A. ホーム用メニューの作成
     console.log("Home Menu (ID作成中...)");
     const homeMenuId = await client.createRichMenu(createMenuObject("Home Tab Menu"));
-    const homeImagePath = path.join(projectRoot, 'public', 'menu-home.JPG');
+    const homeImagePath = resolveImagePath('menu-home');
     const homeImage = fs.readFileSync(homeImagePath);
     await client.setRichMenuImage(homeMenuId, homeImage, "image/jpeg");
     console.log(`✅ ホーム用登録完了！ ID: ${homeMenuId}`);
@@ -65,10 +92,15 @@ async function register() {
     // B. 予約用メニューの作成
     console.log("Reserve Menu (ID作成中...)");
     const reserveMenuId = await client.createRichMenu(createMenuObject("Reserve Tab Menu"));
-    const reserveImagePath = path.join(projectRoot, 'public', 'menu-reserve.JPG');
+    const reserveImagePath = resolveImagePath('menu-reserve');
     const reserveImage = fs.readFileSync(reserveImagePath);
     await client.setRichMenuImage(reserveMenuId, reserveImage, "image/jpeg");
     console.log(`✅ 予約用登録完了！ ID: ${reserveMenuId}`);
+
+    // C. リッチメニューエイリアスを更新（クライアント側で即時切替するため）
+    await upsertRichMenuAlias(HOME_ALIAS_ID, homeMenuId);
+    await upsertRichMenuAlias(RESERVE_ALIAS_ID, reserveMenuId);
+    console.log("✅ リッチメニューエイリアスを更新しました。");
 
     console.log("\n--- 📋 .env.local に貼り付けてください（Webhookは下の2つを推奨） ---");
     console.log(`HOME_RICH_MENU_ID=${homeMenuId}`);
