@@ -54,11 +54,23 @@ export async function POST(req: Request) {
         continue;
       }
 
-      // richmenuswitch の postback はログのみ（切替自体はLINEクライアント側で即時実行）
+      // richmenuswitch を基本としつつ、旧postbackメニュー向けにサーバー側切替も残す
       if (event.type === 'postback') {
         const action = event.postback?.data;
         console.log("📨 postback data:", action);
-        if (action !== 'action=switch-home' && action !== 'action=switch-reserve') {
+        if (action === 'action=switch-home') {
+          if (!homeMenuId) {
+            console.log("⚠️ HOME_RICH_MENU_ID が未設定です。");
+            continue;
+          }
+          await linkMenuToUser(userId, homeMenuId, "HOMEメニュー");
+        } else if (action === 'action=switch-reserve') {
+          if (!reserveMenuId) {
+            console.log("⚠️ RESERVE_RICH_MENU_ID が未設定です。");
+            continue;
+          }
+          await linkMenuToUser(userId, reserveMenuId, "RESERVEメニュー");
+        } else {
           console.log("ℹ️ 未対応のpostbackです。");
         }
       }
