@@ -28,8 +28,13 @@ export async function POST(req: Request) {
       return new Response(JSON.stringify({ status: 'ok' }), { status: 200 });
     }
 
-    const homeMenuId = process.env.HOME_RICH_MENU_ID;
-    const reserveMenuId = process.env.RESERVE_RICH_MENU_ID;
+    // 登録スクリプトの出力と .env の揺れに対応（どちらかがあればOK）
+    const homeMenuId =
+      process.env.HOME_RICH_MENU_ID ||
+      process.env.NEXT_PUBLIC_RICH_MENU_HOME_ID;
+    const reserveMenuId =
+      process.env.RESERVE_RICH_MENU_ID ||
+      process.env.NEXT_PUBLIC_RICH_MENU_RESERVE_ID;
 
     // 全てのイベント（フォロー、postback など）を処理
     for (const event of events) {

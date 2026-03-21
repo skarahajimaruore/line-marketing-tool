@@ -70,9 +70,12 @@ async function register() {
     await client.setRichMenuImage(reserveMenuId, reserveImage, "image/jpeg");
     console.log(`✅ 予約用登録完了！ ID: ${reserveMenuId}`);
 
-    console.log("\n--- 📋 .env.local に貼り付けてください ---");
-    console.log(`NEXT_PUBLIC_RICH_MENU_HOME_ID=${homeMenuId}`);
-    console.log(`NEXT_PUBLIC_RICH_MENU_RESERVE_ID=${reserveMenuId}`);
+    console.log("\n--- 📋 .env.local に貼り付けてください（Webhookは下の2つを推奨） ---");
+    console.log(`HOME_RICH_MENU_ID=${homeMenuId}`);
+    console.log(`RESERVE_RICH_MENU_ID=${reserveMenuId}`);
+    console.log("# フロント用に必要なら併記:");
+    console.log(`# NEXT_PUBLIC_RICH_MENU_HOME_ID=${homeMenuId}`);
+    console.log(`# NEXT_PUBLIC_RICH_MENU_RESERVE_ID=${reserveMenuId}`);
     console.log("------------------------------------------");
 
   } catch (error) {
