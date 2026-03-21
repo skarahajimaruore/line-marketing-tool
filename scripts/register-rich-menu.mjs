@@ -26,7 +26,7 @@ const client = new Client({
 });
 
 // 2. リッチメニューの「枠」の設定（共通レイアウト）
-const createMenuObject = (name, text) => ({
+const createMenuObject = (name) => ({
   size: { width: 2500, height: 1686 },
   selected: true,
   name: name,
@@ -49,7 +49,7 @@ async function register() {
 
     // A. ホーム用メニューの作成
     console.log("Home Menu を作成中...");
-    const homeMenuId = await client.createRichMenu(createMenuObject("Home Menu", "ホーム表示中"));
+    const homeMenuId = await client.createRichMenu(createMenuObject("Home Menu"));
     const homeImagePath = path.join(projectRoot, 'public', 'menu-home.JPG');
     const homeImage = fs.readFileSync(homeImagePath);
     console.log("Home Menu の画像を設定中...");
@@ -58,7 +58,7 @@ async function register() {
 
     // B. 予約用メニューの作成
     console.log("Reserve Menu を作成中...");
-    const reserveMenuId = await client.createRichMenu(createMenuObject("Reserve Menu", "予約表示中"));
+    const reserveMenuId = await client.createRichMenu(createMenuObject("Reserve Menu"));
     const reserveImagePath = path.join(projectRoot, 'public', 'menu-reserve.JPG');
     const reserveImage = fs.readFileSync(reserveImagePath);
     console.log("Reserve Menu の画像を設定中...");

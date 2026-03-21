@@ -7,6 +7,11 @@ const client = new MessagingApiClient({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || '',
 });
 
+async function linkMenuToUser(userId: string, menuId: string, label: string) {
+  await client.linkRichMenuIdToUser(userId, menuId);
+  console.log(`✅ ${label} の紐付けに成功しました！`);
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -23,24 +28,46 @@ export async function POST(req: Request) {
       return new Response(JSON.stringify({ status: 'ok' }), { status: 200 });
     }
 
-    // 全てのイベント（フォロー、メッセージなど）を処理
+    const homeMenuId = process.env.HOME_RICH_MENU_ID;
+    const reserveMenuId = process.env.RESERVE_RICH_MENU_ID;
+
+    // 全てのイベント（フォロー、postback など）を処理
     for (const event of events) {
       console.log("👉 イベントタイプ:", event.type);
+      const userId = event.source?.userId;
+      if (!userId) continue;
 
-      // 「フォロー（友達追加・ブロック解除）」イベントの時
+      // 友だち追加時はホームを初期表示
       if (event.type === 'follow') {
-        const userId = event.source?.userId;
-        const menuId = process.env.HOME_RICH_MENU_ID;
-
+        if (!homeMenuId) {
+          console.log("⚠️ HOME_RICH_MENU_ID が未設定です。");
+          continue;
+        }
         console.log("👤 ユーザーID:", userId);
-        console.log("🆔 紐付けるメニューID:", menuId);
+        console.log("🆔 紐付けるメニューID(HOME):", homeMenuId);
+        await linkMenuToUser(userId, homeMenuId, "HOMEメニュー");
+        continue;
+      }
 
-        if (userId && menuId) {
-          // LINEユーザーにリッチメニューを紐付ける
-          await client.linkRichMenuIdToUser(userId, menuId);
-          console.log("✅ メニューの紐付けに成功しました！");
+      // postback からホーム/予約を切り替える
+      if (event.type === 'postback') {
+        const action = event.postback?.data;
+        console.log("📨 postback data:", action);
+
+        if (action === 'action=switch-home') {
+          if (!homeMenuId) {
+            console.log("⚠️ HOME_RICH_MENU_ID が未設定です。");
+            continue;
+          }
+          await linkMenuToUser(userId, homeMenuId, "HOMEメニュー");
+        } else if (action === 'action=switch-reserve') {
+          if (!reserveMenuId) {
+            console.log("⚠️ RESERVE_RICH_MENU_ID が未設定です。");
+            continue;
+          }
+          await linkMenuToUser(userId, reserveMenuId, "RESERVEメニュー");
         } else {
-          console.log("⚠️ IDが足りません。 .env.local または環境変数を確認してください。");
+          console.log("ℹ️ 未対応のpostbackです。");
         }
       }
     }
@@ -48,9 +75,10 @@ export async function POST(req: Request) {
     // LINEサーバーに対して「受信成功」を返さないとエラー判定される
     return new Response(JSON.stringify({ status: 'ok' }), { status: 200 });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
     // エラーが起きた場合はログに出力し、LINEには500を返す
-    console.error("❌ 処理エラー詳細:", error.message);
-    return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+    console.error("❌ 処理エラー詳細:", message);
+    return new Response(JSON.stringify({ error: message }), { status: 500 });
   }
 }
