@@ -16,6 +16,21 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Supabase
+
+1. [Supabase](https://supabase.com) でプロジェクトを作成し、**Project Settings → API** から URL と anon key を取得する。
+2. `.env.example` を参考に `.env.local` を作成する。
+3. サーバー（Route Handler など）では:
+
+```ts
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+const supabase = createSupabaseServerClient();
+const { data, error } = await supabase.from("your_table").select("*").limit(1);
+```
+
+4. クライアントコンポーネントでは `createSupabaseBrowserClient`（`@/lib/supabase/browser`）を使う。`SERVICE_ROLE_KEY` はブラウザに載せない。
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
