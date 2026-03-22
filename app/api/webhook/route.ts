@@ -1,87 +1,92 @@
 import { messagingApi } from '@line/bot-sdk';
+// 1. 先ほど作成した Supabase クライアントをインポート
+import { createClient } from '@supabase/supabase-js';
 
 const { MessagingApiClient } = messagingApi;
 
-// クライアントの初期化（環境変数からトークンを取得）
+// LINE クライアントの初期化
 const client = new MessagingApiClient({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || '',
 });
 
-async function linkMenuToUser(userId: string, menuId: string, label: string) {
-  await client.linkRichMenuIdToUser(userId, menuId);
-  console.log(`✅ ${label} の紐付けに成功しました！`);
+// 💡 共通関数: LINEへのメニュー紐付けと、DBへのログ記録をセットで行う
+async function linkMenuAndLog(userId: string, menuId: string, label: string, actionData: string) {
+  try {
+    // A. LINE側のメニューを物理的に切り替える
+    await client.linkRichMenuIdToUser(userId, menuId);
+    console.log(`✅ LINE側: ${label} の紐付けに成功しました！`);
+
+    // B. ★Supabase側: 「いつ、誰が、何を」の行動ログを保存(Insert)する
+    const { error: dbError } = await createClient(process.env.NEXT_PUBLIC_SUPABASE_URL || '', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '')
+      .from('interaction_logs') // 事前に作った「行動ログ」テーブル
+      .insert({
+        line_user_id: userId,
+        action_type: 'menu_switch',
+        action_detail: actionData, // 'action=switch-home' など
+      });
+
+    if (dbError) {
+      console.error('❌ Supabase保存失敗:', dbError.message);
+    } else {
+      console.log(`✅ DB側: ${label} への切り替えログを保存しました。`);
+    }
+  } catch (err) {
+    console.error(`❌ ${label} 処理中のエラー:`, err);
+  }
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    
-    // 💡 ポイント1: body.events が存在しない（検証ボタン用）場合でも空配列にする
     const events = body.events || [];
 
     console.log("---------------------------------------");
     console.log("📩 Webhookを受信しました。イベント数:", events.length);
 
-    // 💡 ポイント2: イベントが0個（検証ボタンのテスト通信）なら、ここで正常終了(200)を返す
     if (events.length === 0) {
       console.log("✅ LINEからの検証用通信を確認しました（疎通OK）");
       return new Response(JSON.stringify({ status: 'ok' }), { status: 200 });
     }
 
-    // 登録スクリプトの出力と .env の揺れに対応（どちらかがあればOK）
-    const homeMenuId =
-      process.env.HOME_RICH_MENU_ID ||
-      process.env.NEXT_PUBLIC_RICH_MENU_HOME_ID;
-    const reserveMenuId =
-      process.env.RESERVE_RICH_MENU_ID ||
-      process.env.NEXT_PUBLIC_RICH_MENU_RESERVE_ID;
+    const homeMenuId = process.env.HOME_RICH_MENU_ID || process.env.NEXT_PUBLIC_RICH_MENU_HOME_ID;
+    const reserveMenuId = process.env.RESERVE_RICH_MENU_ID || process.env.NEXT_PUBLIC_RICH_MENU_RESERVE_ID;
 
-    // 全てのイベント（フォロー、postback など）を処理
     for (const event of events) {
       console.log("👉 イベントタイプ:", event.type);
       const userId = event.source?.userId;
       if (!userId) continue;
 
-      // 友だち追加時はホームを初期表示
+      // 1. 友だち追加時
       if (event.type === 'follow') {
-        if (!homeMenuId) {
-          console.log("⚠️ HOME_RICH_MENU_ID が未設定です。");
-          continue;
+        if (homeMenuId) {
+          await linkMenuAndLog(userId, homeMenuId, "初期HOMEメニュー", "event=follow");
         }
-        console.log("👤 ユーザーID:", userId);
-        console.log("🆔 紐付けるメニューID(HOME):", homeMenuId);
-        await linkMenuToUser(userId, homeMenuId, "HOMEメニュー");
         continue;
       }
 
-      // richmenuswitch を基本としつつ、旧postbackメニュー向けにサーバー側切替も残す
+      // 2. ボタン操作（リッチメニュー切り替え）時
       if (event.type === 'postback') {
         const action = event.postback?.data;
         console.log("📨 postback data:", action);
+
         if (action === 'action=switch-home') {
-          if (!homeMenuId) {
-            console.log("⚠️ HOME_RICH_MENU_ID が未設定です。");
-            continue;
+          if (homeMenuId) {
+            await linkMenuAndLog(userId, homeMenuId, "HOMEメニュー", action);
           }
-          await linkMenuToUser(userId, homeMenuId, "HOMEメニュー");
         } else if (action === 'action=switch-reserve') {
-          if (!reserveMenuId) {
-            console.log("⚠️ RESERVE_RICH_MENU_ID が未設定です。");
-            continue;
+          if (reserveMenuId) {
+            await linkMenuAndLog(userId, reserveMenuId, "RESERVEメニュー", action);
           }
-          await linkMenuToUser(userId, reserveMenuId, "RESERVEメニュー");
         } else {
           console.log("ℹ️ 未対応のpostbackです。");
         }
       }
     }
 
-    // LINEサーバーに対して「受信成功」を返さないとエラー判定される
     return new Response(JSON.stringify({ status: 'ok' }), { status: 200 });
 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error";
-    // エラーが起きた場合はログに出力し、LINEには500を返す
     console.error("❌ 処理エラー詳細:", message);
     return new Response(JSON.stringify({ error: message }), { status: 500 });
   }
