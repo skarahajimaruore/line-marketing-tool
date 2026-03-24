@@ -6,22 +6,20 @@ const { MessagingApiClient } = messagingApi;
 // Supabase クライアントの初期化
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || '' // セキュリティのため、サーバー側ではSERVICE_ROLE推奨
+  process.env.SUPABASE_SERVICE_ROLE_KEY || '' 
 );
 
 /**
- * 💡 共通関数: 特定の店舗(channel)のコンテキストで処理を行う
+ * 💡 各店舗(channel)ごとの処理
  */
 async function processEventPerChannel(channel: any, event: any) {
   const userId = event.source?.userId;
   if (!userId) return;
 
-  // 取得した店舗専用のトークンでクライアントを初期化
   const client = new MessagingApiClient({
     channelAccessToken: channel.access_token,
   });
 
-  // リッチメニューIDの取得（将来的にDBのchannelsテーブルに持たせるとさらにレバレッジが効きます）
   const homeMenuId = process.env.HOME_RICH_MENU_ID;
   const reserveMenuId = process.env.RESERVE_RICH_MENU_ID;
 
@@ -30,13 +28,11 @@ async function processEventPerChannel(channel: any, event: any) {
     let actionData = "";
     let targetMenuId = "";
 
-    // 1. 友だち追加時
     if (event.type === 'follow') {
       targetMenuId = homeMenuId || '';
       label = "初期HOMEメニュー";
       actionData = "event=follow";
     } 
-    // 2. ボタン操作時
     else if (event.type === 'postback') {
       actionData = event.postback?.data;
       if (actionData === 'action=switch-home') {
@@ -49,26 +45,25 @@ async function processEventPerChannel(channel: any, event: any) {
     }
 
     if (targetMenuId) {
-      // LINE側切り替え
       await client.linkRichMenuIdToUser(userId, targetMenuId);
       
-      // DB保存（channel_id を紐付けるのがポイント！）
+      // ログ保存
       await supabase.from('interaction_logs').insert({
-        channel_id: channel.channel_id, // どの店舗のログか
+        channel_id: channel.channel_id,
         line_user_id: userId,
         action_type: 'menu_switch',
         action_detail: actionData,
       });
 
-      // ユーザー名簿の更新（ここも channel_id で分離）
+      // 名簿更新
       await supabase.from('users').upsert({
         channel_id: channel.channel_id,
         line_user_id: userId,
         current_menu: actionData,
         updated_at: new Date().toISOString()
-      }, { onConflict: 'channel_id,line_user_id' }); // 店舗ごと×ユーザーごとの一意性
+      }, { onConflict: 'channel_id,line_user_id' });
       
-      console.log(`✅ [${channel.name}] 処理完了: ${label}`);
+      console.log(`✅ [${channel.name}] 処理完了`);
     }
   } catch (err) {
     console.error(`❌ [${channel.name}] 処理エラー:`, err);
@@ -78,25 +73,35 @@ async function processEventPerChannel(channel: any, event: any) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
+    const destination = body.destination; // 📩 これが探しているID
     const events = body.events || [];
-    const destination = body.destination;
 
-    return new Response(JSON.stringify({ 
-      message: `あなたのボットのIDは [${body.destination}] です` 
-    }), { status: 200 });
-    // 🔑 宛先IDを使って、DBから店舗の「鍵」を取得（マルチテナントの核心）
+    // ---------------------------------------------------------
+    // 🔍 【デバッグ用】IDが判明するまで、検証画面にIDを強制表示させる
+    // ---------------------------------------------------------
+    if (events.length === 0) {
+      return new Response(JSON.stringify({ 
+        message: `あなたのボットのIDは [${destination}] です。これをSupabaseのchannel_idに入れてください。` 
+      }), { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // 🔑 DBから店舗情報を取得
     const { data: channel, error: channelError } = await supabase
       .from('channels')
       .select('*')
       .eq('channel_id', destination)
       .single();
 
+    // 店舗未登録時のガード
     if (channelError || !channel) {
-      console.error("❌ 未登録の店舗です:", destination);
+      console.error("❌ 未登録の店舗:", destination);
       return new Response(JSON.stringify({ error: "Channel Not Found" }), { status: 404 });
     }
 
-    // 各イベントをその店舗の権限で処理
+    // 各イベントの実行
     for (const event of events) {
       await processEventPerChannel(channel, event);
     }
