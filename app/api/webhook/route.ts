@@ -23,8 +23,9 @@ async function processEventPerChannel(channel: any, event: any) {
   });
 
   // 環境変数からリッチメニューIDを取得
-  const homeMenuId = process.env.HOME_RICH_MENU_ID;
-  const reserveMenuId = process.env.RESERVE_RICH_MENU_ID;
+ 
+  const homeMenuId = channel.home_menu_id;
+  const reserveMenuId = channel.reserve_menu_id;
 
   try {
     let label = "";
