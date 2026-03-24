@@ -4,10 +4,10 @@ import { createClient } from '@supabase/supabase-js';
 const { MessagingApiClient } = messagingApi;
 
 // 1. Supabaseの初期化
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || '' // サーバー側なのでService Roleを使用
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 /**
  * 💡 店舗ごとの個別処理（メニュー切り替えとログ記録）
