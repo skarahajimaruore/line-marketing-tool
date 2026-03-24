@@ -1,100 +1,103 @@
 import { messagingApi } from '@line/bot-sdk';
 import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
 
 const { MessagingApiClient } = messagingApi;
 
-// 💡 修正ポイント：Vercelにある名前に合わせる
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!; // ここをANON_KEYに変更！
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+export async function POST(req: Request) {
+  const body = await req.json();
+  const destination = body.destination;
+  const event = body.events[0];
 
-/**
- * 💡 店舗ごとの個別処理（メニュー切り替えとログ記録）
- */
-async function processEventPerChannel(channel: any, event: any) {
-  const userId = event.source?.userId;
-  if (!userId) return;
+  if (!event || !destination) return NextResponse.json({ message: 'OK' });
 
-  // DBから取得したその店舗専用のアクセストークンでLINEクライアントを作成
-  const client = new MessagingApiClient({
-    channelAccessToken: channel.access_token,
-  });
+  // 1. DBから店舗情報を取得
+  const { data: channel } = await supabase.from('channels').select('*').eq('channel_id', destination).single();
+  if (!channel) return NextResponse.json({ message: 'Unknown' });
 
-  try {
-    let targetMenuId = "";
-    let actionLabel = "";
+  const client = new MessagingApiClient({ channelAccessToken: channel.access_token });
 
-    // 2. イベントに応じたメニューIDの選択（DBから取得したIDを使用）
-    if (event.type === 'follow' || (event.type === 'postback' && event.postback?.data === 'action=switch-home')) {
-      targetMenuId = channel.home_menu_id; // DBの home_menu_id カラムを参照
-      actionLabel = "home";
-    } else if (event.type === 'postback' && event.postback?.data === 'action=switch-reserve') {
-      targetMenuId = channel.reserve_menu_id; // DBの reserve_menu_id カラムを参照
-      actionLabel = "reserve";
-    }
-
-    // 3. LINEユーザーへのメニュー紐付け実行
-    if (targetMenuId) {
-      await client.linkRichMenuIdToUser(userId, targetMenuId);
-      
-      // 4. インタラクションログの保存
-      await supabase.from('interaction_logs').insert({
-        channel_id: channel.channel_id,
-        line_user_id: userId,
-        action_type: 'menu_switch',
-        action_detail: actionLabel,
-      });
-
-      // 5. ユーザー状態の更新（名簿管理）
-      await supabase.from('users').upsert({
-        channel_id: channel.channel_id,
-        line_user_id: userId,
-        current_menu: actionLabel,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'channel_id,line_user_id' });
-
-      console.log(`✅ [${channel.name}] 完了: ${actionLabel}`);
-    }
-  } catch (err) {
-    console.error(`❌ [${channel.name}] 処理エラー:`, err);
+  // 2. ⚡️【魔法】IDがなければその場で作るロジック
+  // 例としてtab1_idがない場合に、設定されたtab_count分だけ一気に作成
+  if (!channel.tab1_id && channel.tab1_url) {
+    await initializeRichMenus(client, channel);
   }
+
+  // 3. タブ切り替え処理
+  if (event.type === 'postback') {
+    const params = new URLSearchParams(event.postback.data);
+    const tabNum = params.get('tab'); // "1", "2", "3", "4"
+
+    if (tabNum) {
+      const menuId = channel[`tab${tabNum}_id`];
+      const imageUrl = channel[`tab${tabNum}_url`];
+
+      // 画像が未アップロードなら同期
+      if (menuId && imageUrl) {
+        await syncImage(client, menuId, imageUrl);
+      }
+      // メニューを切り替え
+      await client.linkRichMenuIdToUser(event.source.userId!, menuId);
+    }
+  }
+
+  return NextResponse.json({ message: 'OK' });
 }
 
-/**
- * 📩 Webhook エントリポイント
- */
-export async function POST(req: Request) {
-  try {
-    const body = await req.json();
-    const destination = body.destination; // LINE公式アカウント固有のID
-    const events = body.events || [];
+// 🛠️ リッチメニューを自動生成する関数
+async function initializeRichMenus(client: any, channel: any) {
+  const count = channel.tab_count || 2;
+  const newIds: any = {};
 
-    // 検証用リクエスト（イベント空）のハンドリング
-    if (events.length === 0) {
-      return new Response(JSON.stringify({ status: 'ok' }), { status: 200 });
+  for (let i = 1; i <= count; i++) {
+    // タブ数に合わせたボタン配置（簡易版：上部にタブボタンを並べる設計）
+    const richMenu = {
+      size: { width: 2500, height: 1686 },
+      selected: false,
+      name: `${channel.name}_tab${i}`,
+      chatBarText: "メニュー",
+      areas: createTabAreas(count) // タブ数に応じてクリックエリアを自動生成
+    };
+
+    const { richMenuId } = await client.createRichMenu(richMenu);
+    newIds[`tab${i}_id`] = richMenuId;
+    
+    // 初回画像アップロード
+    if (channel[`tab${i}_url`]) {
+      await syncImage(client, richMenuId, channel[`tab${i}_url`]);
     }
-
-    // 🔑 宛先ID（destination）をキーに、DBから店舗の「全設定」を1発で取得
-    const { data: channel, error } = await supabase
-      .from('channels')
-      .select('*')
-      .eq('channel_id', destination)
-      .single();
-
-    if (error || !channel) {
-      console.error("❌ 未登録の店舗からのアクセス:", destination);
-      return new Response("Channel Not Found", { status: 404 });
-    }
-
-    // 届いたイベント（メッセージやボタン押し）を順番に処理
-    for (const event of events) {
-      await processEventPerChannel(channel, event);
-    }
-
-    return new Response(JSON.stringify({ status: 'ok' }), { status: 200 });
-  } catch (err) {
-    console.error("❌ サーバーエラー:", err);
-    return new Response("Internal Server Error", { status: 500 });
   }
+
+  // 発行したIDをDBに保存（次からはこれを使う）
+  await supabase.from('channels').update(newIds).eq('id', channel.id);
+}
+
+// 🖼️ 画像同期
+async function syncImage(client: any, menuId: string, url: string) {
+  const res = await fetch(url);
+  const blob = await res.blob();
+  await client.setRichMenuImage(menuId, blob);
+}
+
+// 📐 タブ数に応じてクリックエリア（ボタン）の座標を計算する関数
+function createTabAreas(count: number) {
+  const areas = [];
+  const width = 2500 / count;
+  for (let i = 0; i < count; i++) {
+    areas.push({
+      bounds: { x: Math.floor(i * width), y: 0, width: Math.floor(width), height: 300 }, // 上部300pxをタブ領域とする
+      action: { type: "postback", data: `action=switch&tab=${i + 1}` }
+    });
+  }
+  // 下部はメインコンテンツエリア（例として全体）
+  areas.push({
+    bounds: { x: 0, y: 300, width: 2500, height: 1386 },
+    action: { type: "uri", uri: "https://google.com" } // ここを予約URLなどに変える
+  });
+  return areas;
 }
