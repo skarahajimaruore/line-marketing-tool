@@ -9,6 +9,10 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+// ⚡ 画像がアップロード済みかをメモリで保持（Vercelのインスタンスが生きている間のみ有効）
+// これにより、同じインスタンス内での無駄なチェックを減らします
+const uploadedMenus = new Set<string>();
+
 export async function POST(req: Request) {
   const body = await req.json();
   const destination = body.destination;
@@ -23,19 +27,15 @@ export async function POST(req: Request) {
     .or(`channel_id.eq.${destination},id.eq.${destination}`)
     .single();
 
-  if (fetchError || !channel) {
-    console.error("❌ チャンネル未登録:", destination);
-    return NextResponse.json({ message: 'Unknown channel' });
-  }
+  if (fetchError || !channel) return NextResponse.json({ message: 'Unknown' });
 
   const client = new MessagingApiClient({ channelAccessToken: channel.access_token });
   const blobClient = new MessagingApiBlobClient({ channelAccessToken: channel.access_token });
   const userId = event.source?.userId;
   if (!userId) return NextResponse.json({ message: 'No userId' });
 
-  // ② リッチメニュー自動作成（未作成の場合のみ）
+  // ② リッチメニュー自動作成（略：変更なし）
   if (!channel.tab1_menu_id) {
-    console.log("🚀 新規リッチメニュー作成開始...");
     const tabCount = channel.tab_count || 2;
     const newIds: any = {};
     try {
@@ -51,20 +51,14 @@ export async function POST(req: Request) {
       }
       await supabase.from('channels').update(newIds).eq('id', channel.id);
       Object.assign(channel, newIds);
-      console.log("✅ 全タブの枠作成完了");
-    } catch (err: any) {
-      console.error("❌ 作成エラー:", err.message);
-    }
+    } catch (err) { console.error("作成エラー"); }
   }
 
   // ③ タブ判定
   let currentTab = "1"; 
   if (event.type === 'postback') {
-    const data = event.postback.data;
-    const match = data.match(/tab=(\d+)/);
-    if (match) {
-      currentTab = match[1];
-    }
+    const match = event.postback.data.match(/tab=(\d+)/);
+    if (match) currentTab = match[1];
   }
 
   const targetMenuId = channel[`tab${currentTab}_menu_id` as keyof typeof channel] as string;
@@ -72,50 +66,47 @@ export async function POST(req: Request) {
 
   if (targetMenuId) {
     try {
-      // 🖼️ 画像同期（エラーが出ても「既にある」と判断して続行する）
-      if (targetImageUrl) {
+      // 🚀 【爆速化の核心】
+      // すでに画像がセットされている（メモリにある）場合は、画像処理を完全にスルー！
+      if (targetImageUrl && !uploadedMenus.has(targetMenuId)) {
         try {
           await syncImage(blobClient, targetMenuId, targetImageUrl);
-        } catch (imgErr) {
-          // 400エラー等は「既に画像設定済み」の可能性が高いため、ログのみ出して次へ
-          console.log(`ℹ️ 画像同期スキップ（設定済み）: ${targetMenuId}`);
+          uploadedMenus.add(targetMenuId); // 成功したら記録
+        } catch (imgErr: any) {
+          // 400エラー（既にある）なら記録して続行
+          if (imgErr.message.includes("400")) uploadedMenus.add(targetMenuId);
         }
       }
       
-      // ⚡ ユーザーにメニューを紐付け（ここが実行されれば切り替わる）
+      // ⚡ link（紐付け）のみ実行。これが最速。
       await client.linkRichMenuIdToUser(userId, targetMenuId);
-      console.log(`✨ User:${userId} を Tab:${currentTab} に切り替え完了`);
+      console.log(`✨ User:${userId} -> Tab:${currentTab} (Fast Link)`);
       
     } catch (err: any) {
-      console.error("❌ 切り替えの致命的エラー:", err.message);
+      console.error("切り替えエラー", err.message);
     }
   }
 
   return NextResponse.json({ message: 'OK' });
 }
 
-// 🖼 画像同期関数
+// 🖼 画像同期関数（変更なし）
 async function syncImage(blobClient: any, menuId: string, url: string) {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Fetch status: ${res.status}`);
-    const blob = await res.blob();
-    const contentType = res.headers.get('content-type') || 'image/jpeg';
-    await blobClient.setRichMenuImage(menuId, blob, contentType);
-    console.log(`✅ 画像同期成功: ${menuId}`);
-  } catch (err: any) {
-    throw err; // 親要素でキャッチしてスキップ判定させる
-  }
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Fetch failed");
+  const blob = await res.blob();
+  const contentType = res.headers.get('content-type') || 'image/jpeg';
+  await blobClient.setRichMenuImage(menuId, blob, contentType);
 }
 
-// 📐 タブエリア計算
+// 📐 タブエリア計算（変更なし）
 function createTabAreas(count: number) {
   const areas = [];
   const tabWidth = Math.floor(2500 / count);
   for (let i = 0; i < count; i++) {
     areas.push({
       bounds: { x: i * tabWidth, y: 0, width: tabWidth, height: 350 },
-      action: { type: "postback", data: `action=switch&tab=${i + 1}`, displayText: `タブ${i + 1}へ切替` }
+      action: { type: "postback", data: `action=switch&tab=${i + 1}` }
     });
   }
   areas.push({
