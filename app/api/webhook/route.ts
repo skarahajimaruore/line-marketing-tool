@@ -11,7 +11,6 @@ const supabase = createClient(
 );
 
 export async function POST(req: Request) {
-  
   const body = await req.json();
   const destination = body.destination;
   const event = body.events?.[0];
@@ -19,14 +18,15 @@ export async function POST(req: Request) {
   if (!event || !destination) {
     return NextResponse.json({ message: 'OK' });
   }
+
   console.log("📍 アクセス中のURL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
   console.log("📍 検索キー (destination):", destination);
 
-  // ① チャンネル情報の取得（BotのUser IDで検索）
+  // ① チャンネル情報の取得（BotのUser ID または 主キーで検索）
   const { data: channel, error: fetchError } = await supabase
     .from('channels')
     .select('*')
-    .eq('channel_id', destination)
+    .or(`channel_id.eq.${destination},id.eq.${destination}`)
     .single();
 
   if (fetchError || !channel) {
@@ -67,14 +67,13 @@ export async function POST(req: Request) {
       const { error: updateError } = await supabase
         .from('channels')
         .update(newIds)
-        .eq('id', channel.id); // 主キーは 'id'
+        .eq('id', channel.id);
 
       if (updateError) {
         console.error("❌ DB書き込み失敗:", updateError.message);
-        console.error("❌ エラー詳細:", updateError.details);
       } else {
         console.log("✅ SupabaseにリッチメニューIDを保存しました");
-        Object.assign(channel, newIds); // メモリ上のデータも更新
+        Object.assign(channel, newIds);
       }
     } catch (err: any) {
       console.error("❌ LINE API エラー:", err.message);
@@ -92,13 +91,20 @@ export async function POST(req: Request) {
   const targetImageUrl = channel[`tab${currentTab}_image_url`];
 
   if (targetMenuId && userId) {
-    // 画像があればアップロード（初回や変更時用）
-    if (targetImageUrl) {
-      await syncImage(client, targetMenuId, targetImageUrl);
+    try {
+      // 🖼️ 画像があればアップロード（これを待たないと link でエラーになる）
+      if (targetImageUrl) {
+        await syncImage(client, targetMenuId, targetImageUrl);
+      }
+      
+      // ユーザーにメニューを表示
+      await client.linkRichMenuIdToUser(userId, targetMenuId);
+      console.log(`📱 User:${userId} に Tab:${currentTab} を表示完了`);
+    } catch (err: any) {
+      console.error("❌ 最終処理でのエラー:", err.message);
+      // 詳細なエラー内容（LINEからのレスポンス）をログに出す
+      if (err.body) console.error("❌ エラー詳細:", err.body);
     }
-    // ユーザーにメニューを表示
-    await client.linkRichMenuIdToUser(userId, targetMenuId);
-    console.log(`📱 User:${userId} に Tab:${currentTab} を表示完了`);
   }
 
   return NextResponse.json({ message: 'OK' });
@@ -107,12 +113,17 @@ export async function POST(req: Request) {
 // 🖼 画像同期関数
 async function syncImage(client: any, menuId: string, url: string) {
   try {
+    console.log(`📥 画像取得開始: ${url}`);
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Fetch status: ${res.status}`);
+    
+    // Blobとして取得し、LINEに送信
     const blob = await res.blob();
     await client.setRichMenuImage(menuId, blob);
+    console.log(`✅ 画像アップロード成功: ${menuId}`);
   } catch (err: any) {
     console.error("❌ 画像アップロード失敗:", err.message);
+    throw err; // 上位の処理で検知できるように再スロー
   }
 }
 
