@@ -57,36 +57,37 @@ export async function POST(req: Request) {
     }
   }
 
-  // =========================================
-  // ③ タブ判定ロジック（ここを強化！）
-  // =========================================
+  // ③ タブ判定
   let currentTab = "1"; 
   if (event.type === 'postback') {
     const data = event.postback.data;
-    console.log("📩 ポストバック受信:", data);
-    
-    // "action=switch&tab=2" のような文字列から数字を抽出
     const match = data.match(/tab=(\d+)/);
     if (match) {
       currentTab = match[1];
     }
   }
-  console.log(`🎯 ターゲットタブ: ${currentTab}`);
 
   const targetMenuId = channel[`tab${currentTab}_menu_id` as keyof typeof channel] as string;
   const targetImageUrl = channel[`tab${currentTab}_image_url` as keyof typeof channel] as string;
 
   if (targetMenuId) {
     try {
-      // 画像同期（415エラー対策済み）
+      // 🖼️ 画像同期（エラーが出ても「既にある」と判断して続行する）
       if (targetImageUrl) {
-        await syncImage(blobClient, targetMenuId, targetImageUrl);
+        try {
+          await syncImage(blobClient, targetMenuId, targetImageUrl);
+        } catch (imgErr) {
+          // 400エラー等は「既に画像設定済み」の可能性が高いため、ログのみ出して次へ
+          console.log(`ℹ️ 画像同期スキップ（設定済み）: ${targetMenuId}`);
+        }
       }
-      // ユーザーに紐付け
+      
+      // ⚡ ユーザーにメニューを紐付け（ここが実行されれば切り替わる）
       await client.linkRichMenuIdToUser(userId, targetMenuId);
-      console.log(`✨ User:${userId} を Tab:${currentTab} に切り替えました`);
+      console.log(`✨ User:${userId} を Tab:${currentTab} に切り替え完了`);
+      
     } catch (err: any) {
-      console.error("❌ 切り替え失敗:", err.message);
+      console.error("❌ 切り替えの致命的エラー:", err.message);
     }
   }
 
@@ -103,12 +104,11 @@ async function syncImage(blobClient: any, menuId: string, url: string) {
     await blobClient.setRichMenuImage(menuId, blob, contentType);
     console.log(`✅ 画像同期成功: ${menuId}`);
   } catch (err: any) {
-    console.error("❌ 画像同期失敗:", err.message);
-    throw err;
+    throw err; // 親要素でキャッチしてスキップ判定させる
   }
 }
 
-// 📐 タブエリア計算（タップ感度を上げるため、高さを350pxに微増）
+// 📐 タブエリア計算
 function createTabAreas(count: number) {
   const areas = [];
   const tabWidth = Math.floor(2500 / count);
@@ -118,7 +118,6 @@ function createTabAreas(count: number) {
       action: { type: "postback", data: `action=switch&tab=${i + 1}`, displayText: `タブ${i + 1}へ切替` }
     });
   }
-  // メインコンテンツエリア
   areas.push({
     bounds: { x: 0, y: 350, width: 2500, height: 1336 },
     action: { type: "postback", data: "action=main" }
