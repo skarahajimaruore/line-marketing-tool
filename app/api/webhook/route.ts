@@ -2,7 +2,7 @@ import { messagingApi } from '@line/bot-sdk';
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
-const { MessagingApiClient } = messagingApi;
+const { MessagingApiClient, MessagingApiBlobClient } = messagingApi; // 👈 BlobClientを追加
 
 // Supabaseクライアントの初期化
 const supabase = createClient(
@@ -19,10 +19,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: 'OK' });
   }
 
-  console.log("📍 アクセス中のURL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
-  console.log("📍 検索キー (destination):", destination);
-
-  // ① チャンネル情報の取得（BotのUser ID または 主キーで検索）
+  // ① チャンネル情報の取得
   const { data: channel, error: fetchError } = await supabase
     .from('channels')
     .select('*')
@@ -34,19 +31,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: 'Unknown channel' });
   }
 
-  const client = new MessagingApiClient({
-    channelAccessToken: channel.access_token,
-  });
+  // クライアントの準備
+  const client = new MessagingApiClient({ channelAccessToken: channel.access_token });
+  const blobClient = new MessagingApiBlobClient({ channelAccessToken: channel.access_token }); // 👈 画像専用
 
   const userId = event.source?.userId;
   if (!userId) return NextResponse.json({ message: 'No userId' });
 
-  // =========================================
-  // ② リッチメニューIDがなければ「枠」を自動作成
-  // =========================================
+  // ② リッチメニュー自動作成
   if (!channel.tab1_menu_id) {
     console.log("🚀 リッチメニュー未作成を検知 → 自動発行を開始します");
-
     const tabCount = channel.tab_count || 2;
     const newIds: any = {};
 
@@ -60,29 +54,16 @@ export async function POST(req: Request) {
           areas: createTabAreas(tabCount) as any[],
         });
         newIds[`tab${i}_menu_id`] = richMenuId;
-        console.log(`✅ Tab${i} 作成成功: ${richMenuId}`);
       }
-
-      // 💾 DBにIDを書き込み
-      const { error: updateError } = await supabase
-        .from('channels')
-        .update(newIds)
-        .eq('id', channel.id);
-
-      if (updateError) {
-        console.error("❌ DB書き込み失敗:", updateError.message);
-      } else {
-        console.log("✅ SupabaseにリッチメニューIDを保存しました");
-        Object.assign(channel, newIds);
-      }
+      await supabase.from('channels').update(newIds).eq('id', channel.id);
+      Object.assign(channel, newIds);
+      console.log("✅ リッチメニュー枠の作成成功");
     } catch (err: any) {
       console.error("❌ LINE API エラー:", err.message);
     }
   }
 
-  // =========================================
   // ③ タブ判定 & 画像同期 & 紐付け
-  // =========================================
   const currentTab = event.type === 'postback'
       ? (new URLSearchParams(event.postback.data).get('tab') || "1")
       : "1";
@@ -92,42 +73,40 @@ export async function POST(req: Request) {
 
   if (targetMenuId && userId) {
     try {
-      // 🖼️ 画像があればアップロード（これを待たないと link でエラーになる）
       if (targetImageUrl) {
-        await syncImage(client, targetMenuId, targetImageUrl);
+        // 🖼️ 画像専用クライアントでアップロード
+        await syncImage(blobClient, targetMenuId, targetImageUrl);
       }
-      
-      // ユーザーにメニューを表示
       await client.linkRichMenuIdToUser(userId, targetMenuId);
-      console.log(`📱 User:${userId} に Tab:${currentTab} を表示完了`);
+      console.log(`📱 User:${userId} にメニュー表示完了！`);
     } catch (err: any) {
-      console.error("❌ 最終処理でのエラー:", err.message);
-      // 詳細なエラー内容（LINEからのレスポンス）をログに出す
-      if (err.body) console.error("❌ エラー詳細:", err.body);
+      console.error("❌ 最終処理エラー:", err.message);
+      if (err.body) console.error("❌ 詳細:", err.body);
     }
   }
 
   return NextResponse.json({ message: 'OK' });
 }
 
-// 🖼 画像同期関数
-async function syncImage(client: any, menuId: string, url: string) {
+// 🖼 画像同期関数（blobClientを使うように修正）
+async function syncImage(blobClient: any, menuId: string, url: string) {
   try {
     console.log(`📥 画像取得開始: ${url}`);
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Fetch status: ${res.status}`);
     
-    // Blobとして取得し、LINEに送信
-    const blob = await res.blob();
-    await client.setRichMenuImage(menuId, blob);
+    const arrayBuffer = await res.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    
+    // BlobClient の setRichMenuImage を使用
+    await blobClient.setRichMenuImage(menuId, buffer, "image/jpeg"); 
     console.log(`✅ 画像アップロード成功: ${menuId}`);
   } catch (err: any) {
     console.error("❌ 画像アップロード失敗:", err.message);
-    throw err; // 上位の処理で検知できるように再スロー
+    throw err;
   }
 }
 
-// 📐 タブエリア計算
 function createTabAreas(count: number) {
   const areas = [];
   const tabWidth = Math.floor(2500 / count);
