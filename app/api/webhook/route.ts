@@ -11,6 +11,7 @@ const supabase = createClient(
 );
 
 export async function POST(req: Request) {
+  
   const body = await req.json();
   const destination = body.destination;
   const event = body.events?.[0];
@@ -18,6 +19,8 @@ export async function POST(req: Request) {
   if (!event || !destination) {
     return NextResponse.json({ message: 'OK' });
   }
+  console.log("📍 アクセス中のURL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
+  console.log("📍 検索キー (destination):", destination);
 
   // ① チャンネル情報の取得（BotのUser IDで検索）
   const { data: channel, error: fetchError } = await supabase
