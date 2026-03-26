@@ -8,6 +8,7 @@ export default function AdminPage() {
   const [formData, setFormData] = useState({
     channel_id: '',
     access_token: '',
+    channel_secret: '',
     name: '',
     tab1_image_url: '',
     tab2_image_url: '',
