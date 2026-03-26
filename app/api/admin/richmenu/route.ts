@@ -4,78 +4,108 @@ import { createClient } from '@supabase/supabase-js';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    // tab_count（分割数）を管理画面から受け取る
-    const { channel_id, access_token, name, tab1_image_url, tab2_image_url, tab3_image_url, tab_count } = body;
+    
+    // 🔍 フロントの JSON { tab_count: ... } をここで確実に受け取る
+    const { 
+      channel_id, 
+      access_token, 
+      channel_secret, 
+      name, 
+      tab1_image_url, 
+      tab2_image_url, 
+      tab3_image_url, 
+      tab_count // 👈 ここ！
+    } = body;
 
     const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 
-    async function createAndUpload(url: string, index: number) {
+    // 📐 計算ロジック：送られてきた tab_count を数値として使用
+    async function createMenu(url: string, index: number, total: number) {
       if (!url || url.startsWith('blob:')) return null;
+      
       const imgRes = await fetch(url);
       const buffer = await imgRes.arrayBuffer();
 
-      const fullWidth = 2500;
-      const fullHeight = 1686;
-      const tabHeight = 350; // タブ部分の高さ
-      
-      // ✨ 分割数に基づいて幅を動的に計算
-      const n = Number(tab_count) || 3; 
-      const tabWidth = Math.floor(fullWidth / n);
-
+      // 1枚あたりの幅を計算（2500 / 分割数）
+      const tabWidth = Math.floor(2500 / total);
       const areas = [];
-      // タブ部分の判定を作成
-      for (let i = 0; i < n; i++) {
+      
+      for (let i = 0; i < total; i++) {
         areas.push({
           bounds: { 
             x: i * tabWidth, 
             y: 0, 
-            width: (i === n - 1) ? (fullWidth - (i * tabWidth)) : tabWidth, // 右端の隙間を埋める
-            height: tabHeight 
+            width: (i === total - 1) ? (2500 - (i * tabWidth)) : tabWidth, 
+            height: 350 
           },
           action: { type: "postback", data: `action=switch&tab=${i + 1}` }
         });
       }
-      // メインコンテンツ部分（下半分）の判定
-      areas.push({ 
-        bounds: { x: 0, y: tabHeight, width: fullWidth, height: fullHeight - tabHeight }, 
-        action: { type: "postback", data: "action=main" } 
+      
+      // 下半分のメインエリア
+      areas.push({
+        bounds: { x: 0, y: 350, width: 2500, height: 1336 },
+        action: { type: "postback", data: "action=main" }
       });
 
       const cRes = await fetch('https://api.line.me/v2/bot/richmenu', {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${access_token}`, 'Content-Type': 'application/json' },
+        headers: { 
+          'Authorization': `Bearer ${access_token}`, 
+          'Content-Type': 'application/json' 
+        },
         body: JSON.stringify({
-          size: { width: fullWidth, height: fullHeight },
+          size: { width: 2500, height: 1686 },
           selected: index === 1,
           name: `${name}_tab${index}`,
           chatBarText: "メニュー",
-          areas
+          areas: areas
         }),
       });
+
       const resJson = await cRes.json();
-      if (!cRes.ok) throw new Error(`LINE API Error: ${resJson.message}`);
+      if (!cRes.ok) throw new Error(`LINE API: ${resJson.message}`);
       
       const richMenuId = resJson.richMenuId;
 
+      // 画像アップロード
       await fetch(`https://api-data.line.me/v2/bot/richmenu/${richMenuId}/content`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${access_token}`, 'Content-Type': 'image/png' },
+        headers: { 
+          'Authorization': `Bearer ${access_token}`, 
+          'Content-Type': 'image/png' 
+        },
         body: Buffer.from(buffer),
       });
+
       return richMenuId;
     }
 
-    // 3枚分のメニューを新規発行
-    const [t1Id, t2Id, t3Id] = await Promise.all([
-      createAndUpload(tab1_image_url, 1),
-      createAndUpload(tab2_image_url, 2),
-      createAndUpload(tab3_image_url, 3)
-    ]);
+    // 🟢 紐付け：フロントから来た tab_count を n に入れる（デフォルトは3）
+    const n = Number(tab_count) || 3; 
 
-    // 💾 DBに最新の正解IDを保存（channel_idを主キーにして上書き）
+    // 各タブの作成に n (分割数) を渡す
+    const t1Id = await createMenu(tab1_image_url, 1, n);
+    const t2Id = await createMenu(tab2_image_url, 2, n);
+    const t3Id = await createMenu(tab3_image_url, 3, n);
+
+    // デフォルトメニュー設定
+    if (t1Id) {
+      await fetch(`https://api.line.me/v2/bot/user/all/richmenu/${t1Id}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${access_token}` },
+      });
+    }
+
+    // DB保存
     const { error } = await supabase.from('channels').upsert({
       channel_id,
+      name,
       access_token,
+      channel_secret,
+      tab1_image_url,
+      tab2_image_url,
+      tab3_image_url,
       tab1_menu_id: t1Id,
       tab2_menu_id: t2Id,
       tab3_menu_id: t3Id,
@@ -84,6 +114,7 @@ export async function POST(request: Request) {
 
     if (error) throw error;
     return NextResponse.json({ success: true });
+
   } catch (err: any) {
     console.error("❌ Admin Error:", err.message);
     return NextResponse.json({ error: err.message }, { status: 500 });
