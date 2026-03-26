@@ -17,20 +17,25 @@ export async function POST(req: Request) {
 
     if (!event || event.type !== 'postback') return NextResponse.json({ message: 'OK' });
 
-    // 1. DBからチャンネル情報を取得
+    // ✨ 修正ポイント：更新日時が新しい順に並べて、一番上の1件だけを取る
     const { data: channel, error } = await supabase
       .from('channels')
       .select('*')
       .eq('channel_id', destination)
-      .single();
+      .order('updated_at', { ascending: false }) // 📅 最新順
+      .limit(1) // ☝️ 1件のみ
+      .maybeSingle();
 
-    if (error || !channel) return NextResponse.json({ message: 'Channel Not Found' });
+    if (error || !channel) {
+      console.error("⚠️ Channel Not Found for:", destination);
+      return NextResponse.json({ message: 'OK' });
+    }
 
     const client = new MessagingApiClient({ channelAccessToken: channel.access_token });
     const userId = event.source?.userId;
     const data = event.postback.data;
 
-    // 2. A・Bと同じ判定ロジックでターゲットIDを決定
+    // 切り替え先の決定
     let targetMenuId = null;
     if (data.includes('tab=1')) targetMenuId = channel.tab1_menu_id;
     else if (data.includes('tab=2')) targetMenuId = channel.tab2_menu_id;
@@ -38,7 +43,7 @@ export async function POST(req: Request) {
 
     if (targetMenuId && userId) {
       await client.linkRichMenuIdToUser(userId, targetMenuId);
-      console.log(`🎯 ${destination}: Tab切り替え完了 -> ${targetMenuId}`);
+      console.log(`🎯 切り替え成功: Tab ${data} -> ${targetMenuId}`);
     }
 
     return NextResponse.json({ message: 'OK' });

@@ -8,10 +8,8 @@ export async function POST(request: Request) {
 
     const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 
-    // A・Bと同じ仕様でメニューを作成する関数
     async function createMenu(url: string, index: number, total: number) {
       if (!url || url.startsWith('blob:')) return null;
-
       const imgRes = await fetch(url);
       const buffer = await imgRes.arrayBuffer();
 
@@ -20,11 +18,7 @@ export async function POST(request: Request) {
       for (let i = 0; i < total; i++) {
         areas.push({
           bounds: { x: i * tabWidth, y: 0, width: tabWidth, height: 350 },
-          action: { 
-            type: "postback", 
-            data: `action=switch&tab=${i + 1}` // ✨ A・Bが認識する合図
-            // displayTextは含めない（A・Bと同じ挙動にする）
-          }
+          action: { type: "postback", data: `action=switch&tab=${i + 1}` }
         });
       }
       areas.push({
@@ -48,7 +42,7 @@ export async function POST(request: Request) {
       await fetch(`https://api-data.line.me/v2/bot/richmenu/${richMenuId}/content`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${access_token}`, 'Content-Type': 'image/png' },
-        body: buffer,
+        body: Buffer.from(buffer),
       });
 
       return richMenuId;
@@ -58,6 +52,7 @@ export async function POST(request: Request) {
     const t2Id = await createMenu(tab2_image_url, 2, 3);
     const t3Id = await createMenu(tab3_image_url, 3, 3);
 
+    // デフォルトメニュー設定
     if (t1Id) {
       await fetch(`https://api.line.me/v2/bot/user/all/richmenu/${t1Id}`, {
         method: 'POST',
@@ -65,6 +60,7 @@ export async function POST(request: Request) {
       });
     }
 
+    // ✨ upsertで既存データを更新、または最新として保存
     const { error: dbError } = await supabase.from('channels').upsert({
       channel_id,
       name,
@@ -76,13 +72,14 @@ export async function POST(request: Request) {
       tab1_menu_id: t1Id,
       tab2_menu_id: t2Id,
       tab3_menu_id: t3Id,
-      updated_at: new Date(),
-    });
+      updated_at: new Date().toISOString(), // 📅 ここで最新時刻を刻む
+    }, { onConflict: 'channel_id' }); // 🆔 同じIDなら上書きする設定
 
     if (dbError) throw new Error(dbError.message);
     return NextResponse.json({ success: true });
 
   } catch (error: any) {
+    console.error("❌ Admin Error:", error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
