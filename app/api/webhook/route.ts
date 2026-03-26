@@ -3,53 +3,39 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
 const { MessagingApiClient } = messagingApi;
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { destination, events } = body;
+    const { destination, events } = await req.json();
     const event = events?.[0];
+    if (event?.type !== 'postback') return NextResponse.json({ message: 'OK' });
 
-    if (!event || event.type !== 'postback') return NextResponse.json({ message: 'OK' });
-
-    // ✨ 修正ポイント：更新日時が新しい順に並べて、一番上の1件だけを取る
-    const { data: channel, error } = await supabase
+    // ⚡️ DBにある「確定済みID」を爆速で取得
+    const { data: ch } = await supabase
       .from('channels')
-      .select('*')
+      .select('access_token, tab1_menu_id, tab2_menu_id, tab3_menu_id')
       .eq('channel_id', destination)
-      .order('updated_at', { ascending: false }) // 📅 最新順
-      .limit(1) // ☝️ 1件のみ
-      .maybeSingle();
+      .single();
 
-    if (error || !channel) {
-      console.error("⚠️ Channel Not Found for:", destination);
-      return NextResponse.json({ message: 'OK' });
-    }
+    if (!ch) return NextResponse.json({ message: 'No Data' });
 
-    const client = new MessagingApiClient({ channelAccessToken: channel.access_token });
-    const userId = event.source?.userId;
     const data = event.postback.data;
+    const userId = event.source.userId;
+    let targetId = null;
 
-    // 切り替え先の決定
-    let targetMenuId = null;
-    if (data.includes('tab=1')) targetMenuId = channel.tab1_menu_id;
-    else if (data.includes('tab=2')) targetMenuId = channel.tab2_menu_id;
-    else if (data.includes('tab=3')) targetMenuId = channel.tab3_menu_id;
+    // アルゴリズム：DBの値を割り当てるだけ
+    if (data.includes('tab=1')) targetId = ch.tab1_menu_id;
+    else if (data.includes('tab=2')) targetId = ch.tab2_menu_id;
+    else if (data.includes('tab=3')) targetId = ch.tab3_menu_id;
 
-    if (targetMenuId && userId) {
-      await client.linkRichMenuIdToUser(userId, targetMenuId);
-      console.log(`🎯 切り替え成功: Tab ${data} -> ${targetMenuId}`);
+    if (targetId && userId) {
+      const client = new MessagingApiClient({ channelAccessToken: ch.access_token });
+      await client.linkRichMenuIdToUser(userId, targetId);
     }
 
     return NextResponse.json({ message: 'OK' });
-
-  } catch (err: any) {
-    console.error("🔥 Webhook Error:", err.message);
+  } catch (err) {
     return NextResponse.json({ message: 'Error' }, { status: 500 });
   }
 }

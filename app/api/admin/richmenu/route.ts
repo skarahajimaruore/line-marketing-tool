@@ -4,27 +4,22 @@ import { createClient } from '@supabase/supabase-js';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { channel_id, access_token, name, channel_secret, tab1_image_url, tab2_image_url, tab3_image_url } = body;
+    const { channel_id, access_token, name, tab1_image_url, tab2_image_url, tab3_image_url } = body;
 
     const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 
-    async function createMenu(url: string, index: number, total: number) {
+    // 🏗️ LINE側にメニューを新規作成する関数
+    async function createAndUpload(url: string, index: number) {
       if (!url || url.startsWith('blob:')) return null;
       const imgRes = await fetch(url);
       const buffer = await imgRes.arrayBuffer();
 
-      const tabWidth = Math.floor(2500 / total);
-      const areas = [];
-      for (let i = 0; i < total; i++) {
-        areas.push({
-          bounds: { x: i * tabWidth, y: 0, width: tabWidth, height: 350 },
-          action: { type: "postback", data: `action=switch&tab=${i + 1}` }
-        });
-      }
-      areas.push({
-        bounds: { x: 0, y: 350, width: 2500, height: 1336 },
-        action: { type: "postback", data: "action=main" }
-      });
+      const tabWidth = 833; // 2500 / 3
+      const areas = [1, 2, 3].map((num) => ({
+        bounds: { x: (num - 1) * tabWidth, y: 0, width: tabWidth, height: 350 },
+        action: { type: "postback", data: `action=switch&tab=${num}` }
+      }));
+      areas.push({ bounds: { x: 0, y: 350, width: 2500, height: 1336 }, action: { type: "postback", data: "action=main" } });
 
       const cRes = await fetch('https://api.line.me/v2/bot/richmenu', {
         method: 'POST',
@@ -34,7 +29,7 @@ export async function POST(request: Request) {
           selected: index === 1,
           name: `${name}_tab${index}`,
           chatBarText: "メニュー",
-          areas: areas
+          areas
         }),
       });
       const { richMenuId } = await cRes.json();
@@ -44,42 +39,29 @@ export async function POST(request: Request) {
         headers: { 'Authorization': `Bearer ${access_token}`, 'Content-Type': 'image/png' },
         body: Buffer.from(buffer),
       });
-
       return richMenuId;
     }
 
-    const t1Id = await createMenu(tab1_image_url, 1, 3);
-    const t2Id = await createMenu(tab2_image_url, 2, 3);
-    const t3Id = await createMenu(tab3_image_url, 3, 3);
+    // 3枚分を新規発行
+    const [t1Id, t2Id, t3Id] = await Promise.all([
+      createAndUpload(tab1_image_url, 1),
+      createAndUpload(tab2_image_url, 2),
+      createAndUpload(tab3_image_url, 3)
+    ]);
 
-    // デフォルトメニュー設定
-    if (t1Id) {
-      await fetch(`https://api.line.me/v2/bot/user/all/richmenu/${t1Id}`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${access_token}` },
-      });
-    }
-
-    // ✨ upsertで既存データを更新、または最新として保存
-    const { error: dbError } = await supabase.from('channels').upsert({
+    // 💾 DBに「最新の正解」を書き込む（既存は上書き）
+    const { error } = await supabase.from('channels').upsert({
       channel_id,
-      name,
       access_token,
-      channel_secret,
-      tab1_image_url,
-      tab2_image_url,
-      tab3_image_url,
       tab1_menu_id: t1Id,
       tab2_menu_id: t2Id,
       tab3_menu_id: t3Id,
-      updated_at: new Date().toISOString(), // 📅 ここで最新時刻を刻む
-    }, { onConflict: 'channel_id' }); // 🆔 同じIDなら上書きする設定
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'channel_id' });
 
-    if (dbError) throw new Error(dbError.message);
+    if (error) throw error;
     return NextResponse.json({ success: true });
-
-  } catch (error: any) {
-    console.error("❌ Admin Error:", error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
