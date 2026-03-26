@@ -9,9 +9,9 @@ export async function POST(req: Request) {
   try {
     const { destination, events } = await req.json();
     const event = events?.[0];
-    if (event?.type !== 'postback') return NextResponse.json({ message: 'OK' });
+    if (!event || event.type !== 'postback') return NextResponse.json({ message: 'OK' });
 
-    // ⚡️ DBにある「確定済みID」を爆速で取得
+    // ⚡️ DBから最速でIDを引き出す（新規作成は一切しない）
     const { data: ch } = await supabase
       .from('channels')
       .select('access_token, tab1_menu_id, tab2_menu_id, tab3_menu_id')
@@ -20,11 +20,10 @@ export async function POST(req: Request) {
 
     if (!ch) return NextResponse.json({ message: 'No Data' });
 
-    const data = event.postback.data;
+    const data = event.postback.data; // e.g., "action=switch&tab=2"
     const userId = event.source.userId;
     let targetId = null;
 
-    // アルゴリズム：DBの値を割り当てるだけ
     if (data.includes('tab=1')) targetId = ch.tab1_menu_id;
     else if (data.includes('tab=2')) targetId = ch.tab2_menu_id;
     else if (data.includes('tab=3')) targetId = ch.tab3_menu_id;
@@ -32,10 +31,12 @@ export async function POST(req: Request) {
     if (targetId && userId) {
       const client = new MessagingApiClient({ channelAccessToken: ch.access_token });
       await client.linkRichMenuIdToUser(userId, targetId);
+      console.log(`🎯 Switch Success: ${data} -> ${targetId}`);
     }
 
     return NextResponse.json({ message: 'OK' });
-  } catch (err) {
+  } catch (err: any) {
+    console.error("🔥 Webhook Error:", err.message);
     return NextResponse.json({ message: 'Error' }, { status: 500 });
   }
 }
