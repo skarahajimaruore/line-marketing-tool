@@ -1,111 +1,125 @@
 "use client";
+import { useState } from 'react';
 
-import React, { useState, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
-
-export default function RichMenuAdmin() {
+export default function AdminPage() {
+  const [loading, setLoading] = useState(false);
+  const [tabCount, setTabCount] = useState(3); // デフォルト3分割
   const [formData, setFormData] = useState({
-    name: '',
     channel_id: '',
     access_token: '',
-    channel_secret: '',
+    name: '',
     tab1_image_url: '',
     tab2_image_url: '',
     tab3_image_url: '',
   });
 
-  const [status, setStatus] = useState('');
-  const [isUploading, setIsUploading] = useState(false);
-
-  // DBから既存データを読み込む (channel_idをキーにする)
-  const fetchChannelData = async (id: string) => {
-    if (id.length < 5) return;
-    const { data } = await supabase.from('channels').select('*').eq('channel_id', id).maybeSingle();
-    if (data) {
-      setFormData(prev => ({ ...prev, ...data }));
-      setStatus('✅ 既存データを読み込みました');
+  const handleUpdate = async () => {
+    // バリデーション
+    if (!formData.channel_id || !formData.access_token) {
+      alert('⚠️ Channel IDとAccess Tokenは必須です');
+      return;
     }
-  };
 
-  useEffect(() => { fetchChannelData(formData.channel_id); }, [formData.channel_id]);
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, tab: string) => {
-    const file = e.target.files?.[0];
-    if (!file || !formData.channel_id) return;
-
-    const localUrl = URL.createObjectURL(file);
-    setFormData(prev => ({ ...prev, [`${tab}_image_url`]: localUrl }));
-    setIsUploading(true);
-
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${formData.channel_id}/${tab}_${Date.now()}.${fileExt}`;
-      const { error } = await supabase.storage.from('rich-menu-images').upload(fileName, file);
-      if (error) throw error;
-
-      const { data: { publicUrl } } = supabase.storage.from('rich-menu-images').getPublicUrl(fileName);
-      setFormData(prev => ({ ...prev, [`${tab}_image_url`]: publicUrl }));
-      setStatus(`✅ ${tab} アップロード完了`);
-    } catch (err: any) {
-      setStatus(`❌ 失敗: ${err.message}`);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  // 🚀 全タブ一括反映 (運用アルゴリズムに合わせたデータを送る)
-  const handleBulkUpdate = async () => {
-    if (!formData.channel_id) return setStatus('❌ IDを入力してください');
-    setStatus('🚀 LINEへ一括発行中...');
+    setLoading(true);
     try {
       const res = await fetch('/api/admin/richmenu', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ 
+          ...formData, 
+          tab_count: tabCount // 📐 ここで分割数をAPIに飛ばします
+        }),
       });
-      if (res.ok) setStatus('🎉 全メニューの更新とDB集約が完了！');
-      else setStatus('❌ 発行エラーが発生しました');
-    } catch (e) { setStatus('❌ 通信エラー'); }
+
+      const result = await res.json();
+
+      if (res.ok) {
+        alert('✅ 成功：最新メニューを発行し、DBを更新しました！');
+      } else {
+        alert(`❌ 発行エラー: ${result.error || '不明なエラー'}`);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('🔥 通信エラーが発生しました。Vercelのログを確認してください。');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 入力変更時の共通ハンドラ
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8 text-gray-900">
-      <div className="max-w-6xl mx-auto space-y-8">
-        <header className="flex justify-between items-center border-b-4 border-green-600 pb-4">
-          <h1 className="text-3xl font-black">Rich Menu Admin</h1>
-          <button onClick={handleBulkUpdate} disabled={isUploading} className="bg-green-600 text-white px-8 py-3 rounded-xl font-black shadow-lg hover:bg-green-700 disabled:opacity-50">
-            🚀 全タブを一括反映
-          </button>
-        </header>
+    <div style={{ padding: '40px 20px', maxWidth: '600px', margin: '0 auto', fontFamily: 'sans-serif' }}>
+      <h2 style={{ borderBottom: '2px solid #00b900', paddingBottom: '10px' }}>
+        店舗メニュー管理パネル (v2: 分離設計版)
+      </h2>
+      
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
+        
+        <section>
+          <label style={{ fontWeight: 'bold' }}>1. 基本情報</label>
+          <input name="channel_id" placeholder="LINE Channel ID (Ub883...)" style={inputStyle} onChange={handleChange} />
+          <input name="access_token" placeholder="Messaging API Access Token" style={inputStyle} onChange={handleChange} />
+          <input name="name" placeholder="管理用：店舗名" style={inputStyle} onChange={handleChange} />
+        </section>
 
-        <div className="bg-white rounded-3xl shadow-lg p-8 grid grid-cols-1 md:grid-cols-2 gap-6 border">
-          <div className="space-y-4">
-            <input type="text" placeholder="LINE Channel ID" className="w-full p-3 bg-yellow-50 border rounded-xl font-mono" value={formData.channel_id} onChange={(e) => setFormData({...formData, channel_id: e.target.value})} />
-            <input type="text" placeholder="Project Name" className="w-full p-3 bg-gray-50 border rounded-xl" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
-          </div>
-          <div className="space-y-4">
-            <input type="password" placeholder="Access Token" className="w-full p-3 bg-gray-50 border rounded-xl text-xs font-mono" value={formData.access_token} onChange={(e) => setFormData({...formData, access_token: e.target.value})} />
-            <input type="password" placeholder="Channel Secret" className="w-full p-3 bg-gray-50 border rounded-xl text-xs font-mono" value={formData.channel_secret} onChange={(e) => setFormData({...formData, channel_secret: e.target.value})} />
-          </div>
-        </div>
+        <section style={{ background: '#f9f9f9', padding: '15px', borderRadius: '8px', border: '1px solid #ddd' }}>
+          <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>
+            2. タブの分割設定 (2〜5枚)
+          </label>
+          <p style={{ fontSize: '12px', color: '#666', marginBottom: '10px' }}>
+            ※ 画像内のタブの数に合わせて入力してください。タップ範囲を自動計算します。
+          </p>
+          <input 
+            type="number" 
+            value={tabCount} 
+            min="2" max="5" 
+            onChange={e => setTabCount(Number(e.target.value))}
+            style={{ ...inputStyle, width: '80px', fontSize: '18px', textAlign: 'center' }}
+          />
+        </section>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {['tab1', 'tab2', 'tab3'].map((tab) => (
-            <div key={tab} className="bg-white p-6 rounded-3xl shadow-md border space-y-4">
-              <h2 className="font-black text-blue-600 uppercase">{tab} PREVIEW</h2>
-              <div className="relative aspect-[2500/1686] border-4 border-dashed border-gray-100 rounded-2xl overflow-hidden bg-gray-50">
-                <input type="file" accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onChange={(e) => handleFileUpload(e, tab)} />
-                {formData[`${tab}_image_url` as keyof typeof formData] ? (
-                  <img src={formData[`${tab}_image_url` as keyof typeof formData]} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="flex items-center justify-center h-full text-gray-300 font-bold tracking-tighter">CLICK TO UPLOAD</div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-        <p className="text-center font-bold text-green-600">{status}</p>
+        <section>
+          <label style={{ fontWeight: 'bold' }}>3. 各タブの画像URL (Supabase Storage等)</label>
+          <input name="tab1_image_url" placeholder="Tab 1 画像URL (必須)" style={inputStyle} onChange={handleChange} />
+          <input name="tab2_image_url" placeholder="Tab 2 画像URL" style={inputStyle} onChange={handleChange} />
+          <input name="tab3_image_url" placeholder="Tab 3 画像URL" style={inputStyle} onChange={handleChange} />
+        </section>
+        
+        <button 
+          onClick={handleUpdate} 
+          disabled={loading}
+          style={{ 
+            padding: '15px', 
+            background: loading ? '#ccc' : '#00b900', 
+            color: '#fff', 
+            border: 'none', 
+            borderRadius: '8px', 
+            cursor: loading ? 'not-allowed' : 'pointer',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            marginTop: '10px'
+          }}
+        >
+          {loading ? 'LINE APIに発行中...' : '🚀 最新設定を保存して一括反映'}
+        </button>
+
+        <p style={{ fontSize: '11px', color: '#999', textAlign: 'center' }}>
+          ※ 反映後、スマホのメニューが変わらない場合は一度トーク画面を開き直してください。
+        </p>
       </div>
     </div>
   );
 }
+
+const inputStyle = {
+  width: '100%',
+  padding: '12px',
+  borderRadius: '5px',
+  border: '1px solid #ccc',
+  marginTop: '5px',
+  boxSizing: 'border-box' as const
+};
