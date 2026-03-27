@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase';
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(false);
-  const [tabCount, setTabCount] = useState(3); // 🟢 追加：タブ分割数
+  const [tabCount, setTabCount] = useState(3);
   const [formData, setFormData] = useState({
     channel_id: '',
     access_token: '',
@@ -19,7 +19,6 @@ export default function AdminPage() {
   const [status, setStatus] = useState('');
   const [isUploading, setIsUploading] = useState(false);
 
-  // DBから既存データを読み込む (channel_idをキーにする)
   const fetchChannelData = async (id: string) => {
     if (id.length < 5) return;
     const { data } = await supabase.from('channels').select('*').eq('channel_id', id).maybeSingle();
@@ -55,7 +54,6 @@ export default function AdminPage() {
     }
   };
 
-  // 🚀 全タブ一括反映
   const handleBulkUpdate = async () => {
     if (!formData.channel_id) return setStatus('❌ IDを入力してください');
     setStatus('🚀 LINEへ一括発行中...');
@@ -64,10 +62,7 @@ export default function AdminPage() {
       const res = await fetch('/api/admin/richmenu', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          tab_count: tabCount // 🟢 ここで分割数をAPIに飛ばす
-        }),
+        body: JSON.stringify({ ...formData, tab_count: tabCount }),
       });
       if (res.ok) setStatus('🎉 全メニューの更新とDB集約が完了！');
       else setStatus('❌ 発行エラーが発生しました');
@@ -92,22 +87,15 @@ export default function AdminPage() {
           </button>
         </header>
 
-        {/* 基本情報入力エリア */}
         <div className="bg-white rounded-3xl shadow-lg p-8 grid grid-cols-1 md:grid-cols-2 gap-6 border">
           <div className="space-y-4">
-            <input type="text" placeholder="LINE Channel ID" className="w-full p-3 bg-yellow-50 border rounded-xl font-mono" value={formData.channel_id} onChange={(e) => setFormData({...formData, channel_id: e.target.value})} />
+            {/* 🟢 ここを分かりやすく修正 */}
+            <input type="text" placeholder="LINE Channel ID (10桁の数字)" className="w-full p-3 bg-yellow-50 border rounded-xl font-mono text-lg" value={formData.channel_id} onChange={(e) => setFormData({...formData, channel_id: e.target.value})} />
             <input type="text" placeholder="Project Name" className="w-full p-3 bg-gray-50 border rounded-xl" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} />
             
-            {/* 🟢 追加：タブ数入力欄（デザインに馴染ませました） */}
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between">
               <label className="font-bold text-blue-700">タブの分割数</label>
-              <input 
-                type="number" 
-                value={tabCount} 
-                min="2" max="5" 
-                onChange={(e) => setTabCount(Number(e.target.value))}
-                className="w-16 p-1 text-center border rounded-lg font-black"
-              />
+              <input type="number" value={tabCount} min="2" max="5" onChange={(e) => setTabCount(Number(e.target.value))} className="w-16 p-1 text-center border rounded-lg font-black" />
             </div>
           </div>
           <div className="space-y-4">
@@ -116,7 +104,6 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* プレビュー・アップロードエリア */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {['tab1', 'tab2', 'tab3'].map((tab) => (
             <div key={tab} className="bg-white p-6 rounded-3xl shadow-md border space-y-4">
@@ -129,13 +116,7 @@ export default function AdminPage() {
                   <div className="flex items-center justify-center h-full text-gray-300 font-bold tracking-tighter text-center px-4">CLICK TO UPLOAD</div>
                 )}
               </div>
-              <input 
-                type="text" 
-                placeholder="Image URL (Auto-filled)" 
-                className="w-full p-2 text-[10px] bg-gray-100 border rounded-lg font-mono"
-                value={formData[`${tab}_image_url` as keyof typeof formData] || ''}
-                readOnly
-              />
+              <input type="text" placeholder="Image URL (Auto-filled)" className="w-full p-2 text-[10px] bg-gray-100 border rounded-lg font-mono" value={formData[`${tab}_image_url` as keyof typeof formData] || ''} readOnly />
             </div>
           ))}
         </div>
