@@ -4,8 +4,6 @@ import { createClient } from '@supabase/supabase-js';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    
-    // 🔍 フロントの JSON { tab_count: ... } をここで確実に受け取る
     const { 
       channel_id, 
       access_token, 
@@ -14,19 +12,19 @@ export async function POST(request: Request) {
       tab1_image_url, 
       tab2_image_url, 
       tab3_image_url, 
-      tab_count // 👈 ここ！
+      tab_count 
     } = body;
 
     const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
 
-    // 📐 計算ロジック：送られてきた tab_count を数値として使用
+    // メニュー作成と画像アップロードを担う関数
     async function createMenu(url: string, index: number, total: number) {
       if (!url || url.startsWith('blob:')) return null;
       
       const imgRes = await fetch(url);
       const buffer = await imgRes.arrayBuffer();
 
-      // 1枚あたりの幅を計算（2500 / 分割数）
+      // タブの数（total）に応じて、タップ判定の幅を動的に計算
       const tabWidth = Math.floor(2500 / total);
       const areas = [];
       
@@ -42,7 +40,6 @@ export async function POST(request: Request) {
         });
       }
       
-      // 下半分のメインエリア
       areas.push({
         bounds: { x: 0, y: 350, width: 2500, height: 1336 },
         action: { type: "postback", data: "action=main" }
@@ -64,11 +61,10 @@ export async function POST(request: Request) {
       });
 
       const resJson = await cRes.json();
-      if (!cRes.ok) throw new Error(`LINE API: ${resJson.message}`);
+      if (!cRes.ok) throw new Error(`LINE API Error: ${resJson.message}`);
       
       const richMenuId = resJson.richMenuId;
 
-      // 画像アップロード
       await fetch(`https://api-data.line.me/v2/bot/richmenu/${richMenuId}/content`, {
         method: 'POST',
         headers: { 
@@ -81,15 +77,15 @@ export async function POST(request: Request) {
       return richMenuId;
     }
 
-    // 🟢 紐付け：フロントから来た tab_count を n に入れる（デフォルトは3）
+    // フロントから届いた tab_count を数値化（デフォルト3）
     const n = Number(tab_count) || 3; 
 
-    // 各タブの作成に n (分割数) を渡す
+    // 各タブを作成（nを渡して座標を計算させる）
     const t1Id = await createMenu(tab1_image_url, 1, n);
     const t2Id = await createMenu(tab2_image_url, 2, n);
     const t3Id = await createMenu(tab3_image_url, 3, n);
 
-    // デフォルトメニュー設定
+    // Tab1 をこのチャネルのデフォルトメニューに設定
     if (t1Id) {
       await fetch(`https://api.line.me/v2/bot/user/all/richmenu/${t1Id}`, {
         method: 'POST',
@@ -97,7 +93,7 @@ export async function POST(request: Request) {
       });
     }
 
-    // DB保存
+    // DBへ最新の情報を上書き保存
     const { error } = await supabase.from('channels').upsert({
       channel_id,
       name,
