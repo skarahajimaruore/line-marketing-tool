@@ -76,15 +76,27 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-gray-50 p-8 text-gray-900">
       <div className="max-w-6xl mx-auto space-y-8">
-        <header className="flex justify-between items-center border-b-4 border-green-600 pb-4">
+      <header className="flex justify-between items-center border-b-4 border-green-600 pb-4">
           <h1 className="text-3xl font-black">Rich Menu Admin</h1>
-          <button 
-            onClick={handleBulkUpdate} 
-            disabled={isUploading || loading} 
-            className="bg-green-600 text-white px-8 py-3 rounded-xl font-black shadow-lg hover:bg-green-700 disabled:opacity-50"
-          >
-            {loading ? '発行中...' : '🚀 全タブを一括反映'}
-          </button>
+          
+          {/* 🟢 右側のボタングループ（メッセージ＋ボタンを横並びにする） */}
+          <div className="flex items-center gap-4">
+            
+            {/* ステータスメッセージをここに配置 */}
+            {status && (
+              <span className={`font-bold text-sm md:text-base animate-pulse ${status.includes('❌') ? 'text-red-600' : 'text-green-600'}`}>
+                {status}
+              </span>
+            )}
+
+            <button 
+              onClick={handleBulkUpdate} 
+              disabled={isUploading || loading} 
+              className="bg-green-600 text-white px-8 py-3 rounded-xl font-black shadow-lg hover:bg-green-700 disabled:opacity-50 transition-all"
+            >
+              {loading ? '発行中...' : '🚀 全タブを一括反映'}
+            </button>
+          </div>
         </header>
 
         <div className="bg-white rounded-3xl shadow-lg p-8 grid grid-cols-1 md:grid-cols-2 gap-6 border">
@@ -121,7 +133,6 @@ export default function AdminPage() {
           ))}
         </div>
 
-        <p className="text-center font-bold text-green-600 text-xl">{status}</p>
       </div>
     </div>
   );
