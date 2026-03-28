@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase';
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(false);
-  const [tabCount, setTabCount] = useState(3);
+  const [tabCount, setTabCount] = useState(2);
   const [formData, setFormData] = useState({
     channel_id: '',
     access_token: '',
