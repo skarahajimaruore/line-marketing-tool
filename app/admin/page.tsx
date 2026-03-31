@@ -96,88 +96,79 @@ export default function AdminPage() {
         </header>
 
         <div className="bg-white rounded-3xl shadow-lg p-8 grid grid-cols-1 md:grid-cols-2 gap-6 border">
-          <div className="space-y-4">
-            
-            {/* 🟢 Channel ID (フローティングラベル化) */}
-            <div className="relative">
-              <input 
-                type="text" 
-                id="channel_id"
-                placeholder="LINE Channel ID (10桁の数字)" 
-                className="peer w-full px-3 pb-2 pt-6 bg-yellow-50 border rounded-xl font-mono text-lg placeholder-transparent focus:outline-none focus:ring-2 focus:ring-green-600" 
-                value={formData.channel_id} 
-                onChange={(e) => setFormData({...formData, channel_id: e.target.value})} 
-              />
-              <label 
-                htmlFor="channel_id" 
-                className="absolute left-3 top-2 text-xs text-gray-500 transition-all peer-placeholder-shown:top-4 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:top-2 peer-focus:text-xs peer-focus:text-green-600 pointer-events-none"
-              >
-                LINE Channel ID (10桁の数字)
-              </label>
-            </div>
+  {/* --- 左カラム --- */}
+  <div className="space-y-4">
+    <div className="relative">
+      <input 
+        type="text" 
+        id="channel_id"
+        placeholder=" " 
+        className="peer w-full px-3 pb-2 pt-6 bg-yellow-50 border rounded-xl font-mono text-base placeholder-transparent focus:outline-none focus:ring-2 focus:ring-green-600" 
+        value={formData.channel_id} 
+        onChange={(e) => setFormData({...formData, channel_id: e.target.value})} 
+      />
+      <label htmlFor="channel_id" className="absolute left-3 top-2 text-xs text-gray-500 transition-all peer-placeholder-shown:top-4 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:top-2 peer-focus:text-xs peer-focus:text-green-600 pointer-events-none">
+        LINE Channel ID (10桁の数字)
+      </label>
+    </div>
 
-            {/* 🟢 Project Name (フローティングラベル化) */}
-            <div className="relative">
-              <input 
-                type="text" 
-                id="project_name"
-                placeholder="Project Name" 
-                className="peer w-full px-3 pb-2 pt-6 bg-gray-50 border rounded-xl placeholder-transparent focus:outline-none focus:ring-2 focus:ring-blue-600" 
-                value={formData.name} 
-                onChange={(e) => setFormData({...formData, name: e.target.value})} 
-              />
-              <label 
-                htmlFor="project_name" 
-                className="absolute left-3 top-2 text-xs text-gray-500 transition-all peer-placeholder-shown:top-4 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:top-2 peer-focus:text-xs peer-focus:text-blue-600 pointer-events-none"
-              >
-                Project Name
-              </label>
-            </div>
-            
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between mt-2">
-              <label className="font-bold text-blue-700">タブの分割数</label>
-              <input type="number" value={tabCount} min="2" max="5" onChange={(e) => setTabCount(Number(e.target.value))} className="w-16 p-1 text-center border rounded-lg font-black" />
-            </div>
-          </div>
+    <div className="relative">
+      <input 
+        type="text" 
+        id="project_name"
+        placeholder=" " 
+        className="peer w-full px-3 pb-2 pt-6 bg-gray-50 border rounded-xl text-base placeholder-transparent focus:outline-none focus:ring-2 focus:ring-blue-600" 
+        value={formData.name} 
+        onChange={(e) => setFormData({...formData, name: e.target.value})} 
+      />
+      <label htmlFor="project_name" className="absolute left-3 top-2 text-xs text-gray-500 transition-all peer-placeholder-shown:top-4 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:top-2 peer-focus:text-xs peer-focus:text-blue-600 pointer-events-none">
+        Project Name
+      </label>
+    </div>
+    
+    {/* 左下の青いボックス */}
+    <div className="p-3 h-[58px] bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between">
+      <label className="font-bold text-blue-700">タブの分割数</label>
+      <input type="number" value={tabCount} min="2" max="5" onChange={(e) => setTabCount(Number(e.target.value))} className="w-16 p-1 text-center border rounded-lg font-black" />
+    </div>
+  </div>
 
-          <div className="space-y-4">
-            {/* 🟢 Access Token (フローティングラベル化) */}
-            <div className="relative">
-              <input 
-                type="password" 
-                id="access_token"
-                placeholder="Access Token" 
-                className="peer w-full px-3 pb-2 pt-6 bg-gray-50 border rounded-xl text-xs font-mono placeholder-transparent focus:outline-none focus:ring-2 focus:ring-blue-600" 
-                value={formData.access_token} 
-                onChange={(e) => setFormData({...formData, access_token: e.target.value})} 
-              />
-              <label 
-                htmlFor="access_token" 
-                className="absolute left-3 top-2 text-xs text-gray-500 transition-all peer-placeholder-shown:top-4 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:top-2 peer-focus:text-xs peer-focus:text-blue-600 pointer-events-none"
-              >
-                Access Token
-              </label>
-            </div>
+  {/* --- 右カラム --- */}
+  <div className="space-y-4">
+    <div className="relative">
+      <input 
+        type="password" 
+        id="access_token"
+        placeholder=" " 
+        className="peer w-full px-3 pb-2 pt-6 bg-gray-50 border rounded-xl font-mono text-base placeholder-transparent focus:outline-none focus:ring-2 focus:ring-blue-600" 
+        value={formData.access_token} 
+        onChange={(e) => setFormData({...formData, access_token: e.target.value})} 
+      />
+      <label htmlFor="access_token" className="absolute left-3 top-2 text-xs text-gray-500 transition-all peer-placeholder-shown:top-4 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:top-2 peer-focus:text-xs peer-focus:text-blue-600 pointer-events-none">
+        Access Token
+      </label>
+    </div>
 
-            {/* 🟢 Channel Secret (フローティングラベル化) */}
-            <div className="relative">
-              <input 
-                type="password" 
-                id="channel_secret"
-                placeholder="Channel Secret" 
-                className="peer w-full px-3 pb-2 pt-6 bg-gray-50 border rounded-xl text-xs font-mono placeholder-transparent focus:outline-none focus:ring-2 focus:ring-blue-600" 
-                value={formData.channel_secret} 
-                onChange={(e) => setFormData({...formData, channel_secret: e.target.value})} 
-              />
-              <label 
-                htmlFor="channel_secret" 
-                className="absolute left-3 top-2 text-xs text-gray-500 transition-all peer-placeholder-shown:top-4 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:top-2 peer-focus:text-xs peer-focus:text-blue-600 pointer-events-none"
-              >
-                Channel Secret
-              </label>
-            </div>
-          </div>
-        </div>
+    <div className="relative">
+      <input 
+        type="password" 
+        id="channel_secret"
+        placeholder=" " 
+        className="peer w-full px-3 pb-2 pt-6 bg-gray-50 border rounded-xl font-mono text-base placeholder-transparent focus:outline-none focus:ring-2 focus:ring-blue-600" 
+        value={formData.channel_secret} 
+        onChange={(e) => setFormData({...formData, channel_secret: e.target.value})} 
+      />
+      <label htmlFor="channel_secret" className="absolute left-3 top-2 text-xs text-gray-500 transition-all peer-placeholder-shown:top-4 peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-focus:top-2 peer-focus:text-xs peer-focus:text-blue-600 pointer-events-none">
+        Channel Secret
+      </label>
+    </div>
+
+    {/* 【重要】右下にも高さを合わせるための案内ボックスを追加 */}
+    <div className="p-3 h-[58px] bg-gray-50 border border-gray-200 rounded-xl flex items-center text-sm text-gray-500 italic">
+      ※ Messaging APIの設定から情報を取得してください
+    </div>
+  </div>
+</div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {['tab1', 'tab2', 'tab3'].map((tab) => (
